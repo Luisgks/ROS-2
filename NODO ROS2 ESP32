@@ -1,0 +1,83 @@
+# NODO PY
+
+import rclpy
+
+from rclpy.node import Node
+
+import serial
+
+import sys
+
+import termios
+
+import tty
+
+import select
+
+import signal
+class Esp32MotorControlNode(Node):
+
+    def _init_(self):
+
+        super()._init_('esp32_motor_control')
+
+        # Configura el puerto serie, ajusta el puerto según tu sistema
+
+        self.ser = serial.Serial('/dev/ttyUSB0', 115200)  # Cambia el puerto si es necesario
+
+        self.get_logger().info("Usa 'W' para adelante, 'S' para atrás, 'A' para izquierda, 'D' para derecha, 'X' para detener")
+
+        # Guardar configuración original de la terminal
+
+        self.original_settings = termios.tcgetattr(sys.stdin)
+
+        # Manejo de señal para Ctrl + C
+
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+    def exit_gracefully(self, signum, frame):
+
+        # Restaura la configuración de la terminal y cierra el puerto serial
+
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.original_settings)
+
+        self.ser.close()
+
+        self.get_logger().info("Saliendo del nodo...")
+
+        rclpy.shutdown()
+
+        exit(0)
+    def get_key(self):
+
+        # Configura la entrada en modo no bloqueante
+
+        tty.setcbreak(sys.stdin.fileno())
+
+        dr, _, _ = select.select([sys.stdin], [], [], 0)
+
+        if dr:
+
+            return sys.stdin.read(1)
+
+        return None
+    def control_motors(self):
+
+        while rclpy.ok():
+
+            key = self.get_key()
+
+            if key in ['w', 'a', 's', 'd', 'x']:
+
+                self.ser.write(key.encode())  # Enviar el comando a la ESP32
+
+                self.get_logger().info(f"Comando enviado: {key}")
+def main(args=None):
+
+    rclpy.init(args=args)
+
+    node = Esp32MotorControlNode()
+
+    node.control_motors()
+if _name_ == '_main_':
+
+    main()
